@@ -199,7 +199,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (BOOL)restoreState:(NSData *)data {
     if (!_loaded || data.length != retro_serialize_size()) return NO;
     BOOL success = retro_unserialize(data.bytes,data.length);
-    if (success) { heldButtons = 0; runReleaseFrames = 0; _accumulator = 0; _lastTime = 0; atomic_store(&audioRead,atomic_load(&audioWrite)); }
+    if (success) { heldButtons = 0; runReleaseFrames = 0; _accumulator = 0; _lastTime = 0; }
     return success;
 }
 - (void)reset { if (_loaded) retro_reset(); heldButtons = 0; runReleaseFrames = 0; }
