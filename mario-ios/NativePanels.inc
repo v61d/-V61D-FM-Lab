@@ -79,7 +79,7 @@
  self.screen.rotation=[self.prefs[@"rotation"] integerValue];self.screen.scanlines=[self.prefs[@"scanlines"] boolValue];[self.screen setNeedsLayout];
  self.fpsLabel.hidden=![self.prefs[@"fps"] boolValue];BOOL touch=[self.prefs[@"input"] isEqual:@"touch"]||[self.prefs[@"showTouch"] boolValue];self.movement.hidden=self.actions.hidden=!touch;
  UIButtonConfiguration *c=self.tools[3].configuration;c.title=self.engine.volume?@"كتم الصوت":@"تشغيل الصوت";c.image=[UIImage systemImageNamed:self.engine.volume?@"speaker.wave.2.fill":@"speaker.slash.fill"];self.tools[3].configuration=c;
- [self.engine releaseInputs];[self.view setNeedsLayout];
+ [self.view setNeedsLayout];
 }
 - (void)statusTick{
  self.fpsLabel.text=[NSString stringWithFormat:@"عرض %.1f FPS · محاكاة %.1f FPS\n%.2f ms/إطار · %@",self.engine.renderedFPS,self.engine.emulatedFPS,self.engine.frameMilliseconds,[self.prefs[@"input"] isEqual:@"controller"]?(self.controller?@"اليد متصلة":@"اليد غير متصلة"):@"NES"];
@@ -139,6 +139,7 @@
  NSAssert(self.engine.coreOptions.count>30,@"Core settings missing");self.engine.rewindEnabled=YES;[self tool:self.tools[7]];
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{
  NSAssert(self.engine.lastFrame!=nil,@"No native video");NSAssert(self.engine.emulatedFPS>1,@"No emulator timing");self.engine.paused=YES;
+ self.prefs[@"volume"]=@50;self.prefs[@"muted"]=@NO;[self applyPreferences];[self tool:self.tools[3]];NSAssert(self.engine.volume==0,@"Mute failed");[self tool:self.tools[3]];NSAssert(self.engine.volume>0,@"Unmute failed");
  NSUInteger rewindBefore=self.engine.rewindStateCount;NSAssert(rewindBefore>0,@"No rewind history");NSAssert([self.engine rewindStep],@"Rewind failed");NSAssert(self.engine.rewindStateCount==rewindBefore-1,@"Rewind did not consume history");self.engine.rewindEnabled=NO;
  NSData *state=[self.engine saveState];NSAssert(state.length>1000,@"No state");
  for(int i=1;i<=9;i++)NSAssert([self.store save:state image:self.engine.lastFrame slot:i snapshot:YES],@"Slot save failed");
@@ -151,7 +152,7 @@
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{
  if([NSProcessInfo.processInfo.arguments containsObject:@"--ui-core"])[self menuAction:@"coreSettings"];
  NSString *dir=NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject;
- NSDictionary *result=@{@"result":@"PASS",@"coreOptions":@(self.engine.coreOptions.count),@"saveSlots":@9,@"retainedHistory":@6,@"stateBytes":@(state.length),@"nativeFPS":@(self.engine.emulatedFPS),@"checks":@[@"native video/timing",@"all slots",@"save retention",@"export/import",@"corrupt import rejected",@"restore",@"core option changes",@"NTSC filter effect",@"rewind history",@"cheat callback",@"settings UI"]};
+ NSDictionary *result=@{@"result":@"PASS",@"coreOptions":@(self.engine.coreOptions.count),@"saveSlots":@9,@"retainedHistory":@6,@"stateBytes":@(state.length),@"nativeFPS":@(self.engine.emulatedFPS),@"checks":@[@"native video/timing",@"all slots",@"save retention",@"export/import",@"corrupt import rejected",@"restore",@"core option changes",@"NTSC filter effect",@"rewind history",@"mute/unmute",@"cheat callback",@"settings UI"]};
  [[NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[dir stringByAppendingPathComponent:@"QA-pass.json"] atomically:YES];
  NSLog(@"V61D_NATIVE_UI_SMOKE_PASS %@",result);
  });
