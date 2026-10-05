@@ -1,9 +1,36 @@
 import SwiftUI
 
 struct ContentView: View {
+    private enum PulsePreset: String, CaseIterable, Identifiable {
+        case slow = "2s / 2s"
+        case medium = "1s / 1s"
+        case fast = "0.5s / 0.5s"
+
+        var id: String { rawValue }
+
+        var on: Double {
+            switch self {
+            case .slow: return 2.0
+            case .medium: return 1.0
+            case .fast: return 0.5
+            }
+        }
+
+        var off: Double { on }
+
+        var count: Int {
+            switch self {
+            case .slow: return 6
+            case .medium: return 8
+            case .fast: return 10
+            }
+        }
+    }
+
     @StateObject private var nfc = NFCLabEngine()
     @StateObject private var beacon = BeaconEngine()
     @State private var receiverMHz: Double = 13.560
+    @State private var pulsePreset: PulsePreset = .slow
 
     var body: some View {
         ZStack {
@@ -17,6 +44,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     header
+                    pulseCard
                     nfcCard
                     shortwaveCard
                     audioCard
@@ -36,7 +64,7 @@ struct ContentView: View {
         VStack(spacing: 7) {
             Text("V61D SW / NFC LAB")
                 .font(.system(size: 27, weight: .black, design: .rounded))
-            Text("13.56 MHz near-field experiment")
+            Text("13.56 MHz pulse-channel experiment")
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
         }
@@ -44,10 +72,85 @@ struct ContentView: View {
         .padding(.top, 8)
     }
 
+    private var pulseCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("NFC ON / OFF PULSE TRAIN", systemImage: "waveform.path.ecg.rectangle")
+                    .font(.headline)
+
+                Picker("Timing", selection: $pulsePreset) {
+                    ForEach(PulsePreset.allCases) { preset in
+                        Text(preset.rawValue).tag(preset)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(nfc.isPulseMode || nfc.isScanning)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("PHASE")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(nfc.pulsePhase)
+                            .font(.title3.bold().monospaced())
+                            .foregroundStyle(nfc.pulsePhase == "ON" ? .green : .orange)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("PULSES")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(nfc.pulseProgress)
+                            .font(.title3.bold().monospaced())
+                    }
+                }
+
+                Button {
+                    nfc.startPulseTrain(
+                        on: pulsePreset.on,
+                        off: pulsePreset.off,
+                        count: pulsePreset.count
+                    )
+                } label: {
+                    HStack {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                        Text("START \(pulsePreset.rawValue) PATTERN")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
+
+                if nfc.isPulseMode {
+                    Button(role: .destructive) {
+                        nfc.stop()
+                    } label: {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text("STOP PATTERN")
+                                .fontWeight(.bold)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Text("المفروض تسمع: طقطقة أثناء ON → سكون أثناء OFF → طقطقة → سكون. إذا اتبع المسجل الإيقاع نفسه، فلدينا قناة تحكم برمجية فعلية.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var nfcCard: some View {
         card {
             VStack(alignment: .leading, spacing: 14) {
-                Label("اختبار مجال NFC — 13.56 MHz", systemImage: "wave.3.right.circle.fill")
+                Label("اختبار NFC اليدوي", systemImage: "wave.3.right.circle.fill")
                     .font(.headline)
 
                 HStack {
@@ -67,35 +170,29 @@ struct ContentView: View {
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-                .disabled(!nfc.isAvailable || nfc.isScanning)
+                .buttonStyle(.bordered)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
 
                 Button {
                     nfc.startContinuous()
                 } label: {
                     HStack {
                         Image(systemName: "antenna.radiowaves.left.and.right")
-                        Text("START NFC READER")
+                        Text("START CONTINUOUS READER")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!nfc.isAvailable || nfc.isScanning)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
 
                 Text(nfc.status)
                     .font(.caption)
-                    .foregroundStyle(nfc.isScanning ? .green : .secondary)
+                    .foregroundStyle((nfc.isScanning || nfc.isPulseMode) ? .green : .secondary)
 
                 Text("آخر حدث: \(nfc.lastEvent)")
                     .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-
-                Text("iOS هو الذي يتحكم بالمجال والتوقيت فعليًا. هذا الزر يطلب NFC Reader Mode؛ التطبيق لا يملك تحكمًا خامًا بالحامل أو التضمين.")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -131,7 +228,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.bordered)
 
-                Text("ابدأ من 13.560 MHz. الرقم هنا دفتر ضبط فقط؛ التطبيق لا يغيّر تردد NFC نفسه.")
+                Text("خلّه على 13.560 MHz أولاً. إذا كان الالتقاط أقوى بجانبها، جرّب ±5 kHz.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -163,9 +260,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(nfc.isScanning)
+                .disabled(nfc.isScanning || nfc.isPulseMode)
 
-                Text("هذا الصوت ليس مُضمّنًا على NFC. أبقيناه فقط للمقارنة مع أي تداخل كهربائي آخر.")
+                Text("هذا الصوت ليس مُضمّنًا على NFC؛ للاختبار المقارن فقط.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -175,16 +272,16 @@ struct ContentView: View {
     private var procedureCard: some View {
         card {
             VStack(alignment: .leading, spacing: 10) {
-                Label("طريقة الاختبار", systemImage: "checklist")
+                Label("الاختبار الحاسم", systemImage: "checklist")
                     .font(.headline)
 
-                Text("1. اضبط المسجل على SW2 ثم 13.560 MHz.")
-                Text("2. ارفع الصوت إلى مستوى متوسط وابحث حول 13.555–13.565 إذا لزم.")
-                Text("3. قرّب أعلى الآيفون جدًا من واجهة المسجل أو مسار هوائي الراديو.")
-                Text("4. اضغط NFC BURST وانتظر حتى تصبح الجلسة Active.")
-                Text("5. كررها 3 مرات. النجاح الأولي = طقطقة/أزيز يظهر عند التشغيل ويختفي بعد انتهاء النبضة.")
+                Text("1. اضبط المسجل على SW2 / 13.560 MHz.")
+                Text("2. قرّب أعلى الآيفون للمسجل مثل التجربة التي نجحت معك.")
+                Text("3. ابدأ بنمط 2s / 2s.")
+                Text("4. المفروض تسمع طقطقة قرابة ثانيتين ثم سكون قرابة ثانيتين، وتتكرر.")
+                Text("5. إذا نجح، جرّب 1s / 1s ثم 0.5s / 0.5s.")
 
-                Text("لو ظهر نفس الأثر كل مرة، نكون أثبتنا مسار التقاط حقيقي من نشاط NFC إلى مستقبل SW. الخطوة التالية وقتها تكون دراسة ترميز نبضات، وليس افتراض نقل أغنية مباشرة.")
+                Text("إذا 2/2 ينجح و0.5/0.5 يفشل، فالحد غالبًا من زمن فتح/إغلاق جلسة Core NFC في iOS، وليس من مستقبل SW نفسه.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -194,7 +291,7 @@ struct ContentView: View {
     }
 
     private var disclaimer: some View {
-        Text("هذه تجربة استقبال قريب المدى. NFC يعمل عند 13.56 MHz كمجال قريب وiOS لا يوفّر API لتضمين صوت AM/FM خام عليه. قد لا يسمع المسجل أي شيء حتى والجلسة نشطة. لا تختبر أثناء القيادة.")
+        Text("هذه النسخة تتحكم بتشغيل وإيقاف جلسات NFC، وليست تحكمًا خامًا بموجة 13.56 MHz. iOS قد يفرض تأخيرًا بين الجلسات، لذلك الزمن الفعلي قد يختلف قليلًا عن الرقم المختار.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
