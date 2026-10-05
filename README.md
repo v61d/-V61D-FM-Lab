@@ -1,39 +1,39 @@
 # V61D SW / NFC Lab
 
-Experimental iOS lab for testing whether a nearby shortwave receiver can notice RF activity from iPhone NFC reader mode at **13.56 MHz**.
+Experimental iOS lab for testing whether a nearby shortwave receiver can notice iPhone NFC reader activity at **13.56 MHz**.
 
-## v0.2
+## v0.3 — Pulse Channel
 
-- Real Core NFC Reader Mode experiment.
-- One-tap **6 second NFC burst** test.
-- SW tuning notebook centered on **13.560 MHz**.
-- Original audio beacon retained as a secondary comparison test.
-- NFC NDEF reader entitlement and usage description included.
+The app now includes an automatic **NFC ON/OFF pulse train**. This is intended to test whether the click/buzz already heard on the SW receiver can be controlled by software timing.
 
-## Goal
+Presets:
+- **2s ON / 2s OFF** × 6
+- **1s ON / 1s OFF** × 8
+- **0.5s ON / 0.5s OFF** × 10
 
-The first goal is only to see whether the car receiver produces a repeatable click, buzz or other change when NFC Reader Mode starts and stops.
-
-iOS controls the NFC RF timing, modulation, transmit power and antenna behavior. This app cannot set an arbitrary carrier or directly modulate music onto 13.56 MHz.
+The app starts an NFC reader session for each ON interval, invalidates it for OFF, then starts the next session.
 
 ## Test
 
-1. Tune the car radio to **SW2 / 13.560 MHz**.
-2. Use medium volume.
-3. Put the upper part of the iPhone very close to the radio or antenna/coax area.
-4. Tap **NFC BURST — 6 SEC**.
-5. Repeat three times.
-6. If needed, check around **13.555–13.565 MHz**.
+1. Tune the receiver to **SW2 / 13.560 MHz**.
+2. Put the upper part of the iPhone very close to the same location that produced the continuous clicking.
+3. Start with **2s / 2s**.
+4. Listen for approximately two seconds of NFC-related clicking followed by approximately two seconds of silence.
+5. If that tracks reliably, try the faster presets.
 
-A repeatable on/off-correlated effect would be useful evidence of coupling. Hearing nothing is also a valid result.
+A repeatable timing-correlated result is evidence of a software-controlled RF activity channel.
 
-## Signing note
+## Important limitation
 
-Core NFC requires the **Near Field Communication Tag Reading** entitlement in the final signed app. GitHub Actions produces an **unsigned IPA**. Your signing/provisioning method must preserve and authorize the NFC entitlement, otherwise Core NFC can report a missing-entitlement error.
+This does **not** directly modulate arbitrary audio onto 13.56 MHz. iOS controls the NFC RF waveform, power, polling behavior and timing internally. The app only starts and stops public Core NFC reader sessions, so actual timing can include system startup/invalidation delay.
+
+## Signing
+
+The final signed app must retain Apple's **Near Field Communication Tag Reading** entitlement.
 
 ## Build artifact
 
-`V61D-SW-NFC-Lab-unsigned`
+`V61D-SW-NFC-Pulse-Lab-unsigned`
 
 ## License
 
