@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var nfc = NFCLabEngine()
     @StateObject private var beacon = BeaconEngine()
-    @State private var receiverMHz: Double = 87.5
-    @State private var showPulse = false
+    @State private var receiverMHz: Double = 13.560
 
     var body: some View {
         ZStack {
@@ -17,22 +17,26 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     header
-                    beaconCard
-                    scanCard
-                    experimentCard
+                    nfcCard
+                    shortwaveCard
+                    audioCard
+                    procedureCard
                     disclaimer
                 }
                 .padding(18)
             }
         }
-        .onDisappear { beacon.stop() }
+        .onDisappear {
+            beacon.stop()
+            nfc.stop()
+        }
     }
 
     private var header: some View {
         VStack(spacing: 7) {
-            Text("V61D FM LAB")
-                .font(.system(size: 28, weight: .black, design: .rounded))
-            Text("Experimental iPhone RF / audio beacon")
+            Text("V61D SW / NFC LAB")
+                .font(.system(size: 27, weight: .black, design: .rounded))
+            Text("13.56 MHz near-field experiment")
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
         }
@@ -40,10 +44,104 @@ struct ContentView: View {
         .padding(.top, 8)
     }
 
-    private var beaconCard: some View {
+    private var nfcCard: some View {
         card {
             VStack(alignment: .leading, spacing: 14) {
-                Label("البصمة الصوتية", systemImage: "waveform")
+                Label("اختبار مجال NFC — 13.56 MHz", systemImage: "wave.3.right.circle.fill")
+                    .font(.headline)
+
+                HStack {
+                    Text("Core NFC")
+                    Spacer()
+                    Text(nfc.isAvailable ? "AVAILABLE" : "UNAVAILABLE")
+                        .font(.caption.bold().monospaced())
+                        .foregroundStyle(nfc.isAvailable ? .green : .red)
+                }
+
+                Button {
+                    nfc.startBurst(seconds: 6)
+                } label: {
+                    HStack {
+                        Image(systemName: "bolt.horizontal.circle.fill")
+                        Text("NFC BURST — 6 SEC")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(!nfc.isAvailable || nfc.isScanning)
+
+                Button {
+                    nfc.startContinuous()
+                } label: {
+                    HStack {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                        Text("START NFC READER")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!nfc.isAvailable || nfc.isScanning)
+
+                Text(nfc.status)
+                    .font(.caption)
+                    .foregroundStyle(nfc.isScanning ? .green : .secondary)
+
+                Text("آخر حدث: \(nfc.lastEvent)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+
+                Text("iOS هو الذي يتحكم بالمجال والتوقيت فعليًا. هذا الزر يطلب NFC Reader Mode؛ التطبيق لا يملك تحكمًا خامًا بالحامل أو التضمين.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var shortwaveCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("مساعد ضبط SW", systemImage: "radio")
+                    .font(.headline)
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(String(format: "%.3f", receiverMHz))
+                        .font(.system(size: 39, weight: .bold, design: .monospaced))
+                    Text("MHz")
+                        .foregroundStyle(.secondary)
+                }
+
+                Slider(value: $receiverMHz, in: 9.500...18.135, step: 0.005)
+
+                HStack {
+                    Button("− 5 kHz") {
+                        receiverMHz = max(9.500, receiverMHz - 0.005)
+                    }
+                    Spacer()
+                    Button("13.560") {
+                        receiverMHz = 13.560
+                    }
+                    Spacer()
+                    Button("+ 5 kHz") {
+                        receiverMHz = min(18.135, receiverMHz + 0.005)
+                    }
+                }
+                .buttonStyle(.bordered)
+
+                Text("ابدأ من 13.560 MHz. الرقم هنا دفتر ضبط فقط؛ التطبيق لا يغيّر تردد NFC نفسه.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var audioCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 13) {
+                Label("اختبار صوتي ثانوي", systemImage: "waveform")
                     .font(.headline)
 
                 Picker("Pattern", selection: $beacon.pattern) {
@@ -54,98 +152,49 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .disabled(beacon.isRunning)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("القوة")
-                        Spacer()
-                        Text("\(Int(beacon.level * 100))%")
-                            .monospacedDigit()
-                    }
-                    Slider(value: $beacon.level, in: 0.15...1.0)
-                        .disabled(beacon.isRunning)
-                }
-
                 Button {
                     beacon.isRunning ? beacon.stop() : beacon.start()
                 } label: {
                     HStack {
                         Image(systemName: beacon.isRunning ? "stop.fill" : "play.fill")
-                        Text(beacon.isRunning ? "STOP BEACON" : "START BEACON")
+                        Text(beacon.isRunning ? "STOP AUDIO" : "START AUDIO BEACON")
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(beacon.isRunning ? .red : .purple)
-
-                Text(beacon.status)
-                    .font(.caption)
-                    .foregroundStyle(beacon.isRunning ? .green : .secondary)
-            }
-        }
-    }
-
-    private var scanCard: some View {
-        card {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("مساعد مسح الراديو", systemImage: "dot.radiowaves.left.and.right")
-                    .font(.headline)
-
-                HStack(alignment: .firstTextBaseline) {
-                    Text(String(format: "%.1f", receiverMHz))
-                        .font(.system(size: 40, weight: .bold, design: .monospaced))
-                    Text("MHz")
-                        .foregroundStyle(.secondary)
-                }
-
-                Slider(value: $receiverMHz, in: 87.5...108.0, step: 0.1)
-
-                HStack {
-                    Button("− 0.1") { receiverMHz = max(87.5, receiverMHz - 0.1) }
-                    Spacer()
-                    Button("+ 0.1") { receiverMHz = min(108.0, receiverMHz + 0.1) }
                 }
                 .buttonStyle(.bordered)
+                .disabled(nfc.isScanning)
 
-                Text("هذا الرقم لتسجيل التردد الذي تفحصه في مسجل السيارة فقط؛ التطبيق لا يضبط تردد إرسال FM.")
+                Text("هذا الصوت ليس مُضمّنًا على NFC. أبقيناه فقط للمقارنة مع أي تداخل كهربائي آخر.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var experimentCard: some View {
+    private var procedureCard: some View {
         card {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Screen activity test", systemImage: "display")
+            VStack(alignment: .leading, spacing: 10) {
+                Label("طريقة الاختبار", systemImage: "checklist")
                     .font(.headline)
 
-                Toggle("نبض الشاشة أثناء الاختبار", isOn: $showPulse)
+                Text("1. اضبط المسجل على SW2 ثم 13.560 MHz.")
+                Text("2. ارفع الصوت إلى مستوى متوسط وابحث حول 13.555–13.565 إذا لزم.")
+                Text("3. قرّب أعلى الآيفون جدًا من واجهة المسجل أو مسار هوائي الراديو.")
+                Text("4. اضغط NFC BURST وانتظر حتى تصبح الجلسة Active.")
+                Text("5. كررها 3 مرات. النجاح الأولي = طقطقة/أزيز يظهر عند التشغيل ويختفي بعد انتهاء النبضة.")
 
-                if showPulse {
-                    TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { timeline in
-                        let tick = Int(timeline.date.timeIntervalSinceReferenceDate * 120)
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(tick.isMultiple(of: 2) ? Color.white : Color.black)
-                            .frame(height: 85)
-                            .overlay(
-                                Text("DISPLAY PULSE")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(tick.isMultiple(of: 2) ? .black : .white)
-                            )
-                    }
-                }
-
-                Text("اختبار إضافي فقط لزيادة النشاط الكهربائي داخل الهاتف. لا يعني أن الشاشة مرسل FM.")
+                Text("لو ظهر نفس الأثر كل مرة، نكون أثبتنا مسار التقاط حقيقي من نشاط NFC إلى مستقبل SW. الخطوة التالية وقتها تكون دراسة ترميز نبضات، وليس افتراض نقل أغنية مباشرة.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 4)
             }
+            .font(.subheadline)
         }
     }
 
     private var disclaimer: some View {
-        Text("تنبيه: iPhone لا يوفر API رسميًا لإرسال FM. هذا تطبيق مختبر لاختبار أي انبعاثات جانبية قابلة للالتقاط، وقد لا يظهر أي شيء على راديو السيارة. أوقف الاختبار إذا ارتفعت حرارة الجهاز بشكل ملحوظ.")
+        Text("هذه تجربة استقبال قريب المدى. NFC يعمل عند 13.56 MHz كمجال قريب وiOS لا يوفّر API لتضمين صوت AM/FM خام عليه. قد لا يسمع المسجل أي شيء حتى والجلسة نشطة. لا تختبر أثناء القيادة.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)

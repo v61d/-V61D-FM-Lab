@@ -1,39 +1,39 @@
-# V61D FM Lab
+# V61D SW / NFC Lab
 
-Experimental iOS lab for testing whether any unintended electromagnetic side-channel from an iPhone can be noticed on a nearby FM receiver.
+Experimental iOS lab for testing whether a nearby shortwave receiver can notice RF activity from iPhone NFC reader mode at **13.56 MHz**.
 
-## What the app does
+## v0.2
 
-- Generates a very distinctive repeating audio beacon (`V61D Locator`).
-- Includes a 1000/500 Hz dual-tone test and a 200 Hz–8 kHz chirp.
-- Provides a receiver-frequency notebook slider for scanning 87.5–108.0 MHz. **It does not tune an iPhone FM transmitter.**
-- Includes an optional 120 Hz display activity test.
-- Built with SwiftUI + AVAudioEngine; no private APIs.
+- Real Core NFC Reader Mode experiment.
+- One-tap **6 second NFC burst** test.
+- SW tuning notebook centered on **13.560 MHz**.
+- Original audio beacon retained as a secondary comparison test.
+- NFC NDEF reader entitlement and usage description included.
 
-## Important limitation
+## Goal
 
-iPhone does not expose an official FM-transmitter API. This app does **not** turn the phone into a guaranteed FM transmitter. It is an experiment to see whether any unintended emissions are detectable at very short range. A normal result is that the radio receives nothing.
+The first goal is only to see whether the car receiver produces a repeatable click, buzz or other change when NFC Reader Mode starts and stops.
 
-Use only for short-range testing with your own receiver and avoid causing interference to other radio users.
+iOS controls the NFC RF timing, modulation, transmit power and antenna behavior. This app cannot set an arbitrary carrier or directly modulate music onto 13.56 MHz.
 
-## Build an unsigned IPA with GitHub Actions
+## Test
 
-The repository includes `.github/workflows/build-ipa.yml`.
+1. Tune the car radio to **SW2 / 13.560 MHz**.
+2. Use medium volume.
+3. Put the upper part of the iPhone very close to the radio or antenna/coax area.
+4. Tap **NFC BURST — 6 SEC**.
+5. Repeat three times.
+6. If needed, check around **13.555–13.565 MHz**.
 
-1. Open **Actions** → **Build unsigned IPA**.
-2. Run the workflow (or push to `main`).
-3. When it finishes, open the run and download the `V61D-FM-Lab-unsigned` artifact.
-4. Extract the artifact ZIP to get `V61D-FM-Lab-unsigned.ipa`.
-5. Sign/install the IPA with your own Apple signing method.
+A repeatable on/off-correlated effect would be useful evidence of coupling. Hearing nothing is also a valid result.
 
-The workflow uses a GitHub-hosted macOS runner, installs XcodeGen, builds with signing disabled, and packages the `.app` as an IPA.
+## Signing note
 
-## Suggested test
+Core NFC requires the **Near Field Communication Tag Reading** entitlement in the final signed app. GitHub Actions produces an **unsigned IPA**. Your signing/provisioning method must preserve and authorize the NFC entitlement, otherwise Core NFC can report a missing-entitlement error.
 
-1. Start **V61D Locator**.
-2. If using a USB-C cable as a passive test lead, connect only the cable and keep it near the car radio/antenna wiring; there is no guarantee this changes emissions.
-3. Slowly scan an unused FM frequency and listen for the unique `beep-beep-beep / lower long beep` pattern.
-4. If you hear something, stop the beacon to verify that it disappears, then start it again to confirm correlation.
+## Build artifact
+
+`V61D-SW-NFC-Lab-unsigned`
 
 ## License
 
