@@ -119,7 +119,7 @@ static UIColor *Surface(void){return [UIColor colorWithRed:0.09 green:0.105 blue
  case 1:if([self saveSnapshot:YES]){[self showNotice:@"تم حفظ تقدمك"];if([self.prefs[@"saveLocation"] isEqual:@"files"])[self share:@[[self.store exportRecord:@"latest.state"]]];}else [self showNotice:@"تعذّر الحفظ"];break;
  case 2:[self showSaves];break;case 3: self.prefs[@"muted"]=@(![self.prefs[@"muted"] boolValue]);[self applyPreferences];break;
  case 4:[self showSettings];break;case 5:[self pauseAndSave];[self showHome];break;case 6:[self toggleFullscreen];break;
- case 7:[self.engine setButton:RETRO_DEVICE_ID_JOYPAD_START pressed:YES source:3];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,80*NSEC_PER_MSEC),dispatch_get_main_queue(),^{[self.engine setButton:RETRO_DEVICE_ID_JOYPAD_START pressed:NO source:3];});break;}
+ case 7:if(self.engine.paused)[self play];[self.engine setButton:RETRO_DEVICE_ID_JOYPAD_START pressed:YES source:3];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,80*NSEC_PER_MSEC),dispatch_get_main_queue(),^{[self.engine setButton:RETRO_DEVICE_ID_JOYPAD_START pressed:NO source:3];});break;}
 }
 - (void)connectControllers{
  self.controller.extendedGamepad.valueChangedHandler=nil;[self.engine releaseInputs];self.controllerBDown=NO;self.controller=GCController.controllers.firstObject;self.controller.handlerQueue=dispatch_get_main_queue();__weak GameController *weakSelf=self;
