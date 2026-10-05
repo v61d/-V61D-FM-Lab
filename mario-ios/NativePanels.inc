@@ -25,6 +25,7 @@
  [MenuController action:@"resetSettings" label:@"إعادة ضبط الإعدادات" detail:@"لا يحذف تقدمك أو حفظاتك"]] note:@"تُحفظ اختياراتك على هذا الجهاز. الإعدادات مرتبطة مباشرة بالمحاكي الأصلي."]];[self menu:@"إعدادات اللعبة" groups:root];
 }
 - (void)menuAction:(NSString *)key{
+ if([key isEqual:@"stepFrame"]){[self.engine advanceFrame];return;}
  if([key isEqual:@"graphics"]){[self menu:@"الصورة والعرض" groups:@[[self group:@"جودة الصورة" rows:@[
  [self pick:@"quality" label:@"شكل البكسل" values:@[@"sharp",@"smooth"] labels:@[@"بكسل واضح",@"صورة ناعمة"]],
  [MenuController toggle:@"scanlines" label:@"خطوط الشاشة الكلاسيكية"],
@@ -36,7 +37,7 @@
  [self pick:@"performance" label:@"وضع الأداء" values:@[@"stable",@"smooth",@"battery"] labels:@[@"ثابت — 60 هرتز",@"سلس — أعلى تحديث متاح",@"توفير الطاقة — عرض 30 هرتز"]],
  [MenuController toggle:@"fast" label:@"التقديم السريع"],[self pick:@"ffratio" label:@"سرعة التقديم" values:@[@"1.5",@"2",@"3",@"4",@"6",@"10"] labels:nil],
  [MenuController toggle:@"slow" label:@"الحركة البطيئة"],[self pick:@"smratio" label:@"مقدار الحركة البطيئة" values:@[@"1.5",@"2",@"3",@"4",@"6",@"10"] labels:nil],
- [MenuController toggle:@"rewind" label:@"تفعيل الإرجاع"],[MenuController toggle:@"fps" label:@"قياس الأداء أثناء اللعب"]] note:@"الإرجاع يحتفظ بنحو 15 ثانية في الذاكرة. زر الإرجاع يظهر أعلى الشاشة؛ اضغطه مطولًا. توفير الطاقة يقلل العرض فقط ويحافظ على سرعة اللعبة الأصلية."]]];return;}
+ [MenuController toggle:@"rewind" label:@"تفعيل الإرجاع"],[MenuController toggle:@"fps" label:@"قياس الأداء أثناء اللعب"],[MenuController action:@"stepFrame" label:@"تقديم إطار واحد" detail:@"تقدّم خطوة واحدة واللعبة متوقفة"]] note:@"الإرجاع يحتفظ بنحو 15 ثانية في الذاكرة. زر الإرجاع يظهر أعلى الشاشة؛ اضغطه مطولًا. توفير الطاقة يقلل العرض فقط ويحافظ على سرعة اللعبة الأصلية."]]];return;}
  if([key isEqual:@"inputSettings"]){[self menu:@"التحكم" groups:@[[self group:@"طريقة اللعب" rows:@[
  [self pick:@"input" label:@"الإدخال" values:@[@"touch",@"controller",@"keyboard"] labels:@[@"لمس",@"يد تحكم",@"كيبورد"]],[MenuController toggle:@"showTouch" label:@"إظهار أزرار اللمس مع اليد والكيبورد"],
  [MenuController toggle:@"autorun" label:@"الركض التلقائي"],[MenuController toggle:@"swapAB" label:@"تبديل A وB على شاشة اللمس"],
@@ -142,7 +143,7 @@
  for(int i=1;i<=9;i++)NSAssert([self.store save:state image:self.engine.lastFrame slot:i snapshot:YES],@"Slot save failed");
  NSAssert(self.store.records.count==16,@"Retention/slot count failed");NSURL *export=[self.store exportRecord:@"slot-9.state"];NSAssert(export!=nil,@"Export failed");NSAssert([self.store importURL:export expectedSize:state.length],@"Import failed");NSAssert([self.engine restoreState:[self.store state:@"latest.state"]],@"Restore failed");
  NSURL *invalid=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"invalid.vsave"]];[@"bad" writeToURL:invalid atomically:YES encoding:NSUTF8StringEncoding error:nil];NSAssert(![self.store importURL:invalid expectedSize:state.length],@"Invalid save accepted");
- NSString *palette=[self.engine coreValue:@"fceumm_palette"];[self.engine setCoreValue:@"sony-cxa2025as-us" key:@"fceumm_palette"];[self.engine setCoreValue:palette key:@"fceumm_palette"];
+ NSString *palette=[self.engine coreValue:@"fceumm_palette"];[self.engine setCoreValue:@"sony-cxa2025as-us" key:@"fceumm_palette"];NSAssert([[self.engine coreValue:@"fceumm_palette"] isEqual:@"sony-cxa2025as-us"],@"Option not applied");[self.engine advanceFrame];[self.engine setCoreValue:palette key:@"fceumm_palette"];[self.engine advanceFrame];
  [self.engine setCheats:@[@{@"code":@"SXIOPO",@"enabled":@YES}]];[self.engine setCheats:self.cheats];
  if(![NSProcessInfo.processInfo.arguments containsObject:@"--ui-game"])[self showSettings];else [self play];
  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{

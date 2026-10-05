@@ -20,4 +20,5 @@
 - (BOOL)restoreState:(NSData *)data;
 - (void)setCheats:(NSArray<NSDictionary *> *)cheats;
 - (void)reset;
+- (void)advanceFrame;
 @end

@@ -25,6 +25,7 @@ static NSMutableArray<NSDictionary *> *optionSpecs;
     BOOL _loaded;
     double _lastTime, _accumulator, _frameRate;
     NSData *_rom;
+    NSString *_romPath;
     UIImage *_lastFrame;
     NSMutableArray<NSData *> *_rewindStates;
     unsigned _rewindCounter, _renderedCount, _emulatedCount;
@@ -182,14 +183,14 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (void)setPerformanceMode:(NSInteger)value{_performanceMode=value;_displayLink.preferredFramesPerSecond=value==2?30:(value==1?UIScreen.mainScreen.maximumFramesPerSecond:60);}
 - (void)setRewindEnabled:(BOOL)value{_rewindEnabled=value;[_rewindStates removeAllObjects];_rewinding=NO;}
 - (void)releaseInputs{NativeInputClear(&inputs);}
-- (void)setCheats:(NSArray *)cheats{retro_cheat_reset();unsigned index=0;for(NSDictionary *c in cheats)retro_cheat_set(index++,[c[@"enabled"] boolValue],[c[@"code"] UTF8String]);}
+- (void)setCheats:(NSArray *)cheats{retro_cheat_reset();unsigned index=0;for(NSDictionary *c in cheats)if([c[@"enabled"] boolValue])retro_cheat_set(index++,true,[c[@"code"] UTF8String]);}
 
 - (void)setVolume:(float)value { _volume = MAX(0,MIN(1,value)); atomic_store(&audioVolume,_volume); }
 - (BOOL)loadROM:(NSString *)path error:(NSError **)error {
     engine = self; [self releaseInputs];
     variables = [NSMutableDictionary new]; optionSpecs=[NSMutableArray new]; variablesChanged=NO;
     saveDirectory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-    _rom = [NSData dataWithContentsOfFile:path];
+    _romPath=[path copy];_rom = [NSData dataWithContentsOfFile:path];
     if (!_rom.length) { if (error) *error = [NSError errorWithDomain:@"V61DMario" code:1 userInfo:@{NSLocalizedDescriptionKey:@"ملف اللعبة غير متاح"}]; return NO; }
     retro_set_environment(environment); retro_set_video_refresh(video);
     retro_set_audio_sample(audioSample); retro_set_audio_sample_batch(audioBatch);
@@ -268,8 +269,9 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     if (success) { [self releaseInputs]; [_rewindStates removeAllObjects]; _accumulator = 0; _lastTime = 0; }
     return success;
 }
+- (void)advanceFrame{if(!_loaded||!_paused)return;retro_run();NativeInputFrame(&inputs);if(self.videoFrame&&_lastFrame)self.videoFrame(_lastFrame.CGImage);}
 - (void)reset {
-    if(_loaded){retro_unload_game();struct retro_game_info game={NULL,_rom.bytes,_rom.length,NULL};_loaded=retro_load_game(&game);retro_set_controller_port_device(0,RETRO_DEVICE_JOYPAD);struct retro_system_av_info info;retro_get_system_av_info(&info);[self updateAV:&info];}
+    if(_loaded){retro_unload_game();struct retro_game_info game={_romPath.UTF8String,_rom.bytes,_rom.length,NULL};_loaded=retro_load_game(&game);retro_set_controller_port_device(0,RETRO_DEVICE_JOYPAD);struct retro_system_av_info info;retro_get_system_av_info(&info);[self updateAV:&info];}
     [self releaseInputs];[_rewindStates removeAllObjects];_accumulator=_lastTime=0;
 }
 @end
