@@ -5,33 +5,71 @@ import Foundation
 final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
     @Published private(set) var isScanning = false
     @Published private(set) var isPulseMode = false
+    @Published private(set) var isToneMode = false
     @Published private(set) var status = "جاهز لاختبار NFC"
     @Published private(set) var lastEvent = "—"
     @Published private(set) var pulsePhase = "IDLE"
     @Published private(set) var pulseProgress = "—"
+    @Published private(set) var toneRateHz: Double = 0
+    @Published private(set) var toneTicks: Int = 0
 
     private var session: NFCNDEFReaderSession?
     private var autoStopWorkItem: DispatchWorkItem?
     private var nextPulseWorkItem: DispatchWorkItem?
+    private var toneStopWorkItem: DispatchWorkItem?
+    private var toneTimer: DispatchSourceTimer?
 
     private var pulseOn: TimeInterval = 2.0
     private var pulseOff: TimeInterval = 2.0
     private var pulseCount = 0
     private var currentPulse = 0
     private var plannedPulseInvalidation = false
+    private var plannedToneInvalidation = false
 
     var isAvailable: Bool {
         NFCNDEFReaderSession.readingAvailable
     }
 
     func startContinuous() {
-        guard !isPulseMode else { return }
+        guard !isPulseMode, !isToneMode else { return }
         startStandaloneSession(autoStopAfter: nil)
     }
 
     func startBurst(seconds: TimeInterval = 6.0) {
-        guard !isPulseMode else { return }
+        guard !isPulseMode, !isToneMode else { return }
         startStandaloneSession(autoStopAfter: seconds)
+    }
+
+    func startRestartTone(rateHz: Double, duration: TimeInterval = 8.0) {
+        guard NFCNDEFReaderSession.readingAvailable else {
+            status = "NFC Reader غير متاح على هذا الجهاز"
+            return
+        }
+        guard session == nil, !isPulseMode, !isToneMode else {
+            status = "أوقف اختبار NFC الحالي أولاً"
+            return
+        }
+
+        cancelScheduledWork()
+        toneRateHz = min(max(rateHz, 10), 250)
+        toneTicks = 0
+        isToneMode = true
+        plannedToneInvalidation = false
+        pulsePhase = "TONE START"
+        status = "تجهيز RF tone عند \(Int(toneRateHz)) Hz…"
+
+        let newSession = makeSession()
+        session = newSession
+        isScanning = true
+        newSession.begin()
+
+        let stopWork = DispatchWorkItem { [weak self] in
+            DispatchQueue.main.async {
+                self?.finishToneTest()
+            }
+        }
+        toneStopWorkItem = stopWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 1.0, execute: stopWork)
     }
 
     func startPulseTrain(on: TimeInterval, off: TimeInterval, count: Int) {
@@ -39,13 +77,12 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
             status = "NFC Reader غير متاح على هذا الجهاز"
             return
         }
-        guard session == nil, !isPulseMode else {
-            status = "أوقف جلسة NFC الحالية أولاً"
+        guard session == nil, !isPulseMode, !isToneMode else {
+            status = "أوقف اختبار NFC الحالي أولاً"
             return
         }
 
-        autoStopWorkItem?.cancel()
-        nextPulseWorkItem?.cancel()
+        cancelScheduledWork()
 
         pulseOn = max(0.35, on)
         pulseOff = max(0.35, off)
@@ -61,14 +98,13 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
     }
 
     func stop() {
-        autoStopWorkItem?.cancel()
-        autoStopWorkItem = nil
-        nextPulseWorkItem?.cancel()
-        nextPulseWorkItem = nil
-
+        cancelScheduledWork()
         isPulseMode = false
+        isToneMode = false
         plannedPulseInvalidation = false
+        plannedToneInvalidation = false
         pulsePhase = "STOPPED"
+        toneRateHz = 0
 
         if let currentSession = session {
             status = "إيقاف جلسة NFC…"
@@ -78,6 +114,16 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
             status = "متوقف"
         }
         isScanning = false
+    }
+
+    private func cancelScheduledWork() {
+        autoStopWorkItem?.cancel()
+        autoStopWorkItem = nil
+        nextPulseWorkItem?.cancel()
+        nextPulseWorkItem = nil
+        toneStopWorkItem?.cancel()
+        toneStopWorkItem = nil
+        stopToneTimer()
     }
 
     private func makeSession() -> NFCNDEFReaderSession {
@@ -100,7 +146,7 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
             return
         }
 
-        autoStopWorkItem?.cancel()
+        cancelScheduledWork()
 
         let newSession = makeSession()
         session = newSession
@@ -123,6 +169,64 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
             }
             autoStopWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        }
+    }
+
+    private func startToneTimer(for activeSession: NFCNDEFReaderSession) {
+        stopToneTimer()
+
+        let hz = max(10, min(toneRateHz, 250))
+        let interval = 1.0 / hz
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+        timer.schedule(
+            deadline: .now() + 0.05,
+            repeating: interval,
+            leeway: .milliseconds(1)
+        )
+        timer.setEventHandler { [weak self, weak activeSession] in
+            guard let self = self,
+                  let activeSession = activeSession,
+                  self.isToneMode,
+                  self.session === activeSession else { return }
+
+            activeSession.restartPolling()
+            self.toneTicks += 1
+
+            if self.toneTicks % max(1, Int(hz / 4.0)) == 0 {
+                self.lastEvent = "restartPolling × \(self.toneTicks)"
+            }
+        }
+        toneTimer = timer
+        timer.resume()
+
+        status = "RF TONE TEST — restartPolling عند \(Int(hz)) Hz"
+        pulsePhase = "TONE \(Int(hz))Hz"
+        lastEvent = "بدأ tone test"
+    }
+
+    private func stopToneTimer() {
+        toneTimer?.setEventHandler {}
+        toneTimer?.cancel()
+        toneTimer = nil
+    }
+
+    private func finishToneTest() {
+        guard isToneMode else { return }
+
+        stopToneTimer()
+        toneStopWorkItem?.cancel()
+        toneStopWorkItem = nil
+        plannedToneInvalidation = true
+        isToneMode = false
+        toneRateHz = 0
+        pulsePhase = "TONE DONE"
+        status = "انتهى اختبار النغمة"
+
+        if let activeSession = session {
+            activeSession.invalidate()
+        } else {
+            plannedToneInvalidation = false
+            isScanning = false
         }
     }
 
@@ -206,7 +310,9 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
 
             self.isScanning = true
 
-            if self.isPulseMode {
+            if self.isToneMode {
+                self.startToneTimer(for: session)
+            } else if self.isPulseMode {
                 self.pulsePhase = "ON"
                 self.status = "ON — نبضة \(self.currentPulse)/\(self.pulseCount) لمدة \(String(format: "%.2f", self.pulseOn)) ثانية"
                 self.lastEvent = "Pulse \(self.currentPulse): ON"
@@ -222,7 +328,7 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.lastEvent = "تم رصد NDEF (\(messages.count))"
-            if !self.isPulseMode {
+            if !self.isPulseMode && !self.isToneMode {
                 self.status = "تم رصد Tag — الاختبار مستمر"
             }
         }
@@ -234,11 +340,19 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
 
             self.autoStopWorkItem?.cancel()
             self.autoStopWorkItem = nil
+            self.stopToneTimer()
 
             if self.session === session {
                 self.session = nil
             }
             self.isScanning = false
+
+            if self.plannedToneInvalidation {
+                self.plannedToneInvalidation = false
+                self.status = "انتهى اختبار النغمة"
+                self.pulsePhase = "TONE DONE"
+                return
+            }
 
             if self.isPulseMode && self.plannedPulseInvalidation {
                 self.plannedPulseInvalidation = false
@@ -252,6 +366,12 @@ final class NFCLabEngine: NSObject, ObservableObject, NFCNDEFReaderSessionDelega
                 self.nextPulseWorkItem?.cancel()
                 self.nextPulseWorkItem = nil
                 self.pulsePhase = "ERROR"
+            }
+
+            if self.isToneMode {
+                self.isToneMode = false
+                self.toneRateHz = 0
+                self.pulsePhase = "TONE ERROR"
             }
 
             if let nfcError = error as? NFCReaderError {
