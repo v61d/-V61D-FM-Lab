@@ -28,7 +28,7 @@ xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK_PATH" \
   -Wl,-no_adhoc_codesign NativeMain.m NativeEngine.m build/core/fceumm-ios.a -lm -o "$APP_PATH/V61DMario"
 cp Info.plist "$APP_PATH/Info.plist"
 cp build/game/mario.nes "$APP_PATH/mario.nes"
-cp build/core/COPYING "$APP_PATH/COPYING"
+cp build/core/Copying "$APP_PATH/COPYING"
 xcrun ibtool --compile "$APP_PATH/LaunchScreen.storyboardc" LaunchScreen.storyboard \
   --minimum-deployment-target 15.0 --target-device iphone --target-device ipad
 for entry in '120 AppIcon60x60@2x.png' '180 AppIcon60x60@3x.png' '76 AppIcon76x76.png' '152 AppIcon76x76@2x.png' '167 AppIcon83.5x83.5@2x.png'; do
