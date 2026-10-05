@@ -9,6 +9,7 @@ curl -fL --retry 3 "https://codeload.github.com/libretro/libretro-fceumm/tar.gz/
 tar -xzf build/core.tar.gz --strip-components=1 -C build/core
 # A standalone frontend must provide libretro-common in its static archive.
 python3 - <<'PY'
+assert open('v61d-logo.png','rb').read(8) == b'\x89PNG\r\n\x1a\n', 'Invalid home logo PNG'
 p='build/core/Makefile.common'
 s=open(p).read().replace('ifneq ($(STATIC_LINKING), 1)','ifneq ($(V61D_EXTERNAL_COMMON), 1)')
 open(p,'w').write(s)

@@ -36,4 +36,8 @@ xcrun simctl terminate "$DEVICE_ID" com.v61d.mario
 xcrun simctl launch "$DEVICE_ID" com.v61d.mario --ui-smoke --ui-game
 sleep 10
 xcrun simctl io "$DEVICE_ID" screenshot build/QA-game.png
+xcrun simctl terminate "$DEVICE_ID" com.v61d.mario
+xcrun simctl launch "$DEVICE_ID" com.v61d.mario
+sleep 5
+xcrun simctl io "$DEVICE_ID" screenshot build/QA-home.png
 xcrun simctl shutdown "$DEVICE_ID"
