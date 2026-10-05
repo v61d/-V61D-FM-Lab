@@ -13,7 +13,7 @@ static NativeEngine *engine;
 static NSMutableDictionary<NSString *,NSString *> *variables;
 static NSString *saveDirectory;
 static enum retro_pixel_format pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
-static uint16_t heldButtons, inputSources[3];
+static uint16_t heldButtons, inputSources[4];
 static BOOL variablesChanged;
 static NSMutableArray<NSDictionary *> *optionSpecs;
 static unsigned runReleaseFrames;
@@ -28,12 +28,13 @@ static unsigned runReleaseFrames;
     NSMutableArray<NSData *> *_rewindStates;
     unsigned _rewindCounter, _renderedCount, _emulatedCount;
     double _metricsStart, _renderedFPS, _emulatedFPS, _frameMilliseconds;
-    double _sampleRate;
+    double _sampleRate, _aspectRatio;
 }
 - (void)tick:(CADisplayLink *)link;
 - (void)configureAudio:(double)rate;
 - (void)receiveFrame:(CGImageRef)frame;
 - (void)updateAV:(const struct retro_system_av_info *)info;
+- (void)updateGeometry:(const struct retro_game_geometry *)geometry;
 @end
 
 static NSString *S(const char *s) { return s ? [NSString stringWithUTF8String:s] : @""; }
@@ -89,7 +90,7 @@ static bool environment(unsigned command, void *data) {
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
-        case RETRO_ENVIRONMENT_SET_GEOMETRY:
+        case RETRO_ENVIRONMENT_SET_GEOMETRY: [engine updateGeometry:data];return true;
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: return true;
         default: return false;
     }
@@ -164,6 +165,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     return self;
 }
 - (double)frameRate { return _frameRate; }
+- (double)aspectRatio{return _aspectRatio>0?_aspectRatio:256.0/240.0;}
 - (double)renderedFPS{return _renderedFPS;}
 - (double)emulatedFPS{return _emulatedFPS;}
 - (double)frameMilliseconds{return _frameMilliseconds;}
@@ -178,7 +180,8 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 }
 - (void)resetCoreOptions{for(NSDictionary *d in optionSpecs)variables[d[@"key"]]=d[@"default"];variablesChanged=YES;[NSUserDefaults.standardUserDefaults removeObjectForKey:@"core.options"];}
 - (void)receiveFrame:(CGImageRef)frame{_lastFrame=[UIImage imageWithCGImage:frame];}
-- (void)updateAV:(const struct retro_system_av_info *)info{_frameRate=info->timing.fps;if(_audioQueue&&fabs(_sampleRate-info->timing.sample_rate)>1)[self configureAudio:info->timing.sample_rate];}
+- (void)updateGeometry:(const struct retro_game_geometry *)g{_aspectRatio=g->aspect_ratio>0?g->aspect_ratio:(double)g->base_width/g->base_height;}
+- (void)updateAV:(const struct retro_system_av_info *)info{[self updateGeometry:&info->geometry];_frameRate=info->timing.fps;if(_audioQueue&&fabs(_sampleRate-info->timing.sample_rate)>1)[self configureAudio:info->timing.sample_rate];}
 - (void)setPerformanceMode:(NSInteger)value{_performanceMode=value;_displayLink.preferredFramesPerSecond=value==2?30:(value==1?UIScreen.mainScreen.maximumFramesPerSecond:60);}
 - (void)setRewindEnabled:(BOOL)value{_rewindEnabled=value;[_rewindStates removeAllObjects];_rewinding=NO;}
 - (void)releaseInputs{heldButtons=0;memset(inputSources,0,sizeof(inputSources));runReleaseFrames=0;}
@@ -200,7 +203,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     _loaded = YES;
     retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
     struct retro_system_av_info info; retro_get_system_av_info(&info);
-    _frameRate = info.timing.fps > 0 ? info.timing.fps : 60.0988;
+    _frameRate = info.timing.fps > 0 ? info.timing.fps : 60.0988;[self updateGeometry:&info.geometry];
     [self configureAudio:info.timing.sample_rate];
     _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
     _displayLink.preferredFramesPerSecond = _performanceMode==2?30:(_performanceMode==1?UIScreen.mainScreen.maximumFramesPerSecond:60);
@@ -211,7 +214,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (void)setPaused:(BOOL)paused {
     _paused = paused; _displayLink.paused = paused; _lastTime = 0; _accumulator = 0;
     if (paused) {
-        [self releaseInputs]; _metricsStart=0;_renderedCount=_emulatedCount=0;
+        [self releaseInputs]; _rewinding=NO; _metricsStart=0;_renderedCount=_emulatedCount=0;
         if (_audioQueue) AudioQueuePause(_audioQueue);
     } else if (_audioQueue) AudioQueueStart(_audioQueue,NULL);
 }
@@ -254,10 +257,10 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 }
 - (void)setButton:(unsigned)button pressed:(BOOL)pressed{[self setButton:button pressed:pressed source:0];}
 - (void)setButton:(unsigned)button pressed:(BOOL)pressed source:(unsigned)source{
-    if(_paused||button>=16||source>=3)return;
+    if(_paused||button>=16||source>=4)return;
     BOOL prior=(heldButtons&(1u<<button))!=0;
     if(pressed)inputSources[source]|=1u<<button;else inputSources[source]&=~(1u<<button);
-    heldButtons=inputSources[0]|inputSources[1]|inputSources[2];
+    heldButtons=inputSources[0]|inputSources[1]|inputSources[2]|inputSources[3];
     if(_autoRun&&button==RETRO_DEVICE_ID_JOYPAD_B&&!prior&&(heldButtons&(1u<<button)))runReleaseFrames=2;
 }
 - (NSData *)saveState {
@@ -271,5 +274,8 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     if (success) { [self releaseInputs]; [_rewindStates removeAllObjects]; _accumulator = 0; _lastTime = 0; }
     return success;
 }
-- (void)reset { if (_loaded) retro_reset(); [self releaseInputs]; [_rewindStates removeAllObjects]; }
+- (void)reset {
+    if(_loaded){retro_unload_game();struct retro_game_info game={NULL,_rom.bytes,_rom.length,NULL};_loaded=retro_load_game(&game);retro_set_controller_port_device(0,RETRO_DEVICE_JOYPAD);struct retro_system_av_info info;retro_get_system_av_info(&info);[self updateAV:&info];}
+    [self releaseInputs];[_rewindStates removeAllObjects];_accumulator=_lastTime=0;
+}
 @end

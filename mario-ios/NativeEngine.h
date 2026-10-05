@@ -6,7 +6,7 @@
 @property(nonatomic) float volume;
 @property(nonatomic) double speed;
 @property(nonatomic) NSInteger performanceMode;
-@property(nonatomic,readonly) double frameRate, renderedFPS, emulatedFPS, frameMilliseconds;
+@property(nonatomic,readonly) double frameRate, aspectRatio, renderedFPS, emulatedFPS, frameMilliseconds;
 @property(nonatomic,readonly) UIImage *lastFrame;
 @property(nonatomic,readonly) NSArray<NSDictionary *> *coreOptions;
 - (BOOL)loadROM:(NSString *)path error:(NSError **)error;
