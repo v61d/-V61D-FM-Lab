@@ -1,0 +1,28 @@
+name: V61DFMLab
+options:
+  bundleIdPrefix: io.v61d
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+targets:
+  V61DFMLab:
+    type: application
+    platform: iOS
+    sources:
+      - path: V61DFMLab
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.v61d.V61DFMLab
+        PRODUCT_NAME: V61D FM Lab
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: V61D FM Lab
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+    scheme:
+      gatherCoverageData: false
