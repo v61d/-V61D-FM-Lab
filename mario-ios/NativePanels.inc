@@ -123,7 +123,7 @@
 }
 - (void)toggleRecording{
  RPScreenRecorder *r=RPScreenRecorder.sharedRecorder;if(self.recording){[r stopRecordingWithHandler:^(RPPreviewViewController *preview,NSError *error){dispatch_async(dispatch_get_main_queue(),^{self.recording=NO;[self pauseAndSave];if(preview){preview.previewControllerDelegate=self;[[self presenter] presentViewController:preview animated:YES completion:nil];}else [self showNotice:error.localizedDescription?:@"تعذّر إكمال التسجيل"];});}];return;}
- if(!r.available){[self showNotice:@"تسجيل الشاشة غير متاح الآن"];return;}[self dismissViewControllerAnimated:YES completion:^{[self play];r.microphoneEnabled=NO;[r startRecordingWithHandler:^(NSError *error){dispatch_async(dispatch_get_main_queue(),^{self.recording=error==nil;[self showNotice:error?error.localizedDescription:@"بدأ التسجيل — أوقفه من إعدادات الالتقاط"];});}];}];
+ if(!r.available){[self showNotice:@"تسجيل الشاشة غير متاح الآن"];return;}[self dismissViewControllerAnimated:YES completion:^{[self play];r.microphoneEnabled=NO;[r startRecordingWithHandler:^(NSError *error){dispatch_async(dispatch_get_main_queue(),^{self.recording=error==nil;if(!error)[self play];[self showNotice:error?error.localizedDescription:@"بدأ التسجيل — أوقفه من إعدادات الالتقاط"];});}];}];
 }
 - (void)previewControllerDidFinish:(RPPreviewViewController *)p{[p dismissViewControllerAnimated:YES completion:nil];}
 - (void)showCheats{

@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 CORE_SHA=7a542dab1e87679921962a9f056186eca425c0c2
 mkdir -p build/core build/game
+clang -O2 input-tests.c -o build/input-tests
+./build/input-tests
 curl -fL --retry 3 "https://codeload.github.com/libretro/libretro-fceumm/tar.gz/$CORE_SHA" -o build/core.tar.gz
 tar -xzf build/core.tar.gz --strip-components=1 -C build/core
 # A standalone frontend must provide libretro-common in its static archive.
@@ -40,7 +42,7 @@ plutil -lint "$APP_PATH/Info.plist"
 file "$APP_PATH/V61DMario"
 # Corresponding GPL source: exact patched core plus frontend; game ROM is separate.
 mkdir -p build/V61D-Mario-Native-source/frontend
-cp NativeMain.m NativeEngine.m NativeEngine.h NativePanels.inc MenuController.h MenuController.m SaveStore.h SaveStore.m core-smoke.c build.sh verify-simulator.sh Info.plist README.md LaunchScreen.storyboard AppIcon.png v61d-logo.png build/V61D-Mario-Native-source/frontend/
+cp NativeMain.m NativeEngine.m NativeEngine.h NativeInput.h input-tests.c NativePanels.inc MenuController.h MenuController.m SaveStore.h SaveStore.m core-smoke.c build.sh verify-simulator.sh Info.plist README.md LaunchScreen.storyboard AppIcon.png v61d-logo.png build/V61D-Mario-Native-source/frontend/
 cp -R build/core build/V61D-Mario-Native-source/core
 find build/V61D-Mario-Native-source/core -type f \( -name '*.o' -o -name '*.a' \) -delete
 cd build

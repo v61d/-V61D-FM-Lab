@@ -4,6 +4,7 @@
 #import <AVFoundation/AVFoundation.h>
 #include <stdatomic.h>
 #include "libretro.h"
+#include "NativeInput.h"
 
 #define RING_SAMPLES 32768
 static int16_t audioRing[RING_SAMPLES];
@@ -13,10 +14,10 @@ static NativeEngine *engine;
 static NSMutableDictionary<NSString *,NSString *> *variables;
 static NSString *saveDirectory;
 static enum retro_pixel_format pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
-static uint16_t heldButtons, inputSources[4];
+static NativeInput inputs;
 static BOOL variablesChanged;
 static NSMutableArray<NSDictionary *> *optionSpecs;
-static unsigned runReleaseFrames;
+
 
 @interface NativeEngine () {
     CADisplayLink *_displayLink;
@@ -87,10 +88,10 @@ static bool environment(unsigned command, void *data) {
         }
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = variablesChanged; variablesChanged=NO; return true;
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: return true;
+        case RETRO_ENVIRONMENT_SET_GEOMETRY: [engine updateGeometry:data];return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
-        case RETRO_ENVIRONMENT_SET_GEOMETRY: [engine updateGeometry:data];return true;
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: return true;
         default: return false;
     }
@@ -98,11 +99,7 @@ static bool environment(unsigned command, void *data) {
 static void inputPoll(void) {}
 static int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port || device != RETRO_DEVICE_JOYPAD || index) return 0;
-    uint16_t value = heldButtons;
-    if (engine.autoRun) {
-        value &= ~(1u << RETRO_DEVICE_ID_JOYPAD_B);
-        if (!runReleaseFrames) value |= 1u << RETRO_DEVICE_ID_JOYPAD_B;
-    }
+    uint16_t value=NativeInputMask(&inputs,engine.autoRun);
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)value;
     return id < 16 && (value & (1u << id)) ? 1 : 0;
 }
@@ -184,7 +181,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (void)updateAV:(const struct retro_system_av_info *)info{[self updateGeometry:&info->geometry];_frameRate=info->timing.fps;if(_audioQueue&&fabs(_sampleRate-info->timing.sample_rate)>1)[self configureAudio:info->timing.sample_rate];}
 - (void)setPerformanceMode:(NSInteger)value{_performanceMode=value;_displayLink.preferredFramesPerSecond=value==2?30:(value==1?UIScreen.mainScreen.maximumFramesPerSecond:60);}
 - (void)setRewindEnabled:(BOOL)value{_rewindEnabled=value;[_rewindStates removeAllObjects];_rewinding=NO;}
-- (void)releaseInputs{heldButtons=0;memset(inputSources,0,sizeof(inputSources));runReleaseFrames=0;}
+- (void)releaseInputs{NativeInputClear(&inputs);}
 - (void)setCheats:(NSArray *)cheats{retro_cheat_reset();unsigned index=0;for(NSDictionary *c in cheats)retro_cheat_set(index++,[c[@"enabled"] boolValue],[c[@"code"] UTF8String]);}
 
 - (void)setVolume:(float)value { _volume = MAX(0,MIN(1,value)); atomic_store(&audioVolume,_volume); }
@@ -247,7 +244,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
         NSData *state=_rewindStates.lastObject;[_rewindStates removeLastObject];retro_unserialize(state.bytes,state.length);retro_run();frames=1;_accumulator=0;
     }else if(!_rewinding){
         while(_accumulator>=1.0/_frameRate&&frames<60){
-            _accumulator-=1.0/_frameRate;retro_run();frames++;if(runReleaseFrames)runReleaseFrames--;
+            _accumulator-=1.0/_frameRate;retro_run();frames++;NativeInputFrame(&inputs);
             if(_rewindEnabled&&++_rewindCounter>=6){_rewindCounter=0;NSData *state=[self saveState];if(state)[_rewindStates addObject:state];if(_rewindStates.count>150)[_rewindStates removeObjectAtIndex:0];}
         }
     }
@@ -258,10 +255,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (void)setButton:(unsigned)button pressed:(BOOL)pressed{[self setButton:button pressed:pressed source:0];}
 - (void)setButton:(unsigned)button pressed:(BOOL)pressed source:(unsigned)source{
     if(_paused||button>=16||source>=4)return;
-    BOOL prior=(heldButtons&(1u<<button))!=0;
-    if(pressed)inputSources[source]|=1u<<button;else inputSources[source]&=~(1u<<button);
-    heldButtons=inputSources[0]|inputSources[1]|inputSources[2]|inputSources[3];
-    if(_autoRun&&button==RETRO_DEVICE_ID_JOYPAD_B&&!prior&&(heldButtons&(1u<<button)))runReleaseFrames=2;
+    NativeInputSet(&inputs,button,pressed,source,_autoRun);
 }
 - (NSData *)saveState {
     if (!_loaded) return nil;
