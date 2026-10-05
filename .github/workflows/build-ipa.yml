@@ -39,7 +39,7 @@ jobs:
 
       - name: Package IPA
         run: |
-          APP_PATH="build/Build/Products/Release-iphoneos/V61D FM Lab.app"
+          APP_PATH="build/Build/Products/Release-iphoneos/V61D SW NFC Lab.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "Expected app not found at: $APP_PATH"
             find build/Build/Products -maxdepth 3 -type d -name '*.app' -print
@@ -48,12 +48,12 @@ jobs:
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          ditto -c -k --sequesterRsrc --keepParent Payload V61D-FM-Lab-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload V61D-SW-NFC-Lab-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: V61D-FM-Lab-unsigned
-          path: V61D-FM-Lab-unsigned.ipa
+          name: V61D-SW-NFC-Lab-unsigned
+          path: V61D-SW-NFC-Lab-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
