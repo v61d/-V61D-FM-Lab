@@ -1,0 +1,22 @@
+name: Build V61D Mario IPA
+on:
+  push:
+    branches: ['apps/v61d-mario-ios']
+    paths: ['mario-ios/**', '.github/workflows/build-mario-ipa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify unsigned IPA
+        run: bash mario-ios/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V61D-Mario-unsigned
+          path: mario-ios/build/V61D-Mario-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
