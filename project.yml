@@ -13,16 +13,20 @@ targets:
     platform: iOS
     sources:
       - path: V61DFMLab
+    dependencies:
+      - sdk: CoreNFC.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.v61d.V61DFMLab
-        PRODUCT_NAME: V61D FM Lab
-        CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 0.1.0
+        PRODUCT_NAME: V61D SW NFC Lab
+        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: 0.2.0
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: V61D FM Lab
+        INFOPLIST_KEY_CFBundleDisplayName: V61D SW NFC Lab
+        INFOPLIST_KEY_NFCReaderUsageDescription: "V61D SW/NFC Lab uses NFC reader mode to test 13.56 MHz activity with a nearby shortwave receiver."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_ENTITLEMENTS: V61DFMLab/V61DFMLab.entitlements
     scheme:
       gatherCoverageData: false
