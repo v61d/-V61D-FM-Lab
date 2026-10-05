@@ -1,6 +1,16 @@
 import SwiftUI
 
 struct ContentView: View {
+    private enum TonePreset: Double, CaseIterable, Identifiable {
+        case hz25 = 25
+        case hz50 = 50
+        case hz100 = 100
+        case hz200 = 200
+
+        var id: Double { rawValue }
+        var label: String { "\(Int(rawValue)) Hz" }
+    }
+
     private enum PulsePreset: String, CaseIterable, Identifiable {
         case slow = "2s / 2s"
         case medium = "1s / 1s"
@@ -31,6 +41,7 @@ struct ContentView: View {
     @StateObject private var beacon = BeaconEngine()
     @State private var receiverMHz: Double = 13.560
     @State private var pulsePreset: PulsePreset = .slow
+    @State private var tonePreset: TonePreset = .hz50
 
     var body: some View {
         ZStack {
@@ -44,6 +55,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     header
+                    toneCard
                     pulseCard
                     nfcCard
                     shortwaveCard
@@ -64,12 +76,72 @@ struct ContentView: View {
         VStack(spacing: 7) {
             Text("V61D SW / NFC LAB")
                 .font(.system(size: 27, weight: .black, design: .rounded))
-            Text("13.56 MHz pulse-channel experiment")
+            Text("13.56 MHz tone experiment")
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
+    }
+
+    private var toneCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("RF TONE — بدل الطقطقة", systemImage: "speaker.wave.3.fill")
+                    .font(.headline)
+
+                Text("هذه التجربة تُبقي جلسة NFC مفتوحة وتستدعي restartPolling بسرعة ثابتة. إذا كل restart يولّد تغيرًا يلتقطه المسجل، المفروض الطقات تندمج إلى أزيز/نغمة لها Pitch واضح.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Tone", selection: $tonePreset) {
+                    ForEach(TonePreset.allCases) { preset in
+                        Text(preset.label).tag(preset)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(nfc.isScanning || nfc.isPulseMode || nfc.isToneMode)
+
+                Button {
+                    nfc.startRestartTone(rateHz: tonePreset.rawValue, duration: 8)
+                } label: {
+                    HStack {
+                        Image(systemName: "waveform")
+                        Text("START \(tonePreset.label) RF TONE")
+                            .fontWeight(.bold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode || nfc.isToneMode)
+
+                if nfc.isToneMode {
+                    HStack {
+                        Text("RATE")
+                            .foregroundStyle(.secondary)
+                        Text("\(Int(nfc.toneRateHz)) Hz")
+                            .font(.headline.monospaced())
+                        Spacer()
+                        Text("× \(nfc.toneTicks)")
+                            .font(.caption.monospaced())
+                    }
+
+                    Button(role: .destructive) {
+                        nfc.stop()
+                    } label: {
+                        Text("STOP RF TONE")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Text("ابدأ بـ50 Hz، ثم 100 Hz، ثم 200 Hz. إذا تغير ارتفاع الأزيز مع الرقم فهذه أول خطوة نحو صوت RF فعلي، مو مجرد ON/OFF بطيء.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var pulseCard: some View {
@@ -84,7 +156,7 @@ struct ContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .disabled(nfc.isPulseMode || nfc.isScanning)
+                .disabled(nfc.isPulseMode || nfc.isScanning || nfc.isToneMode)
 
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -93,7 +165,6 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         Text(nfc.pulsePhase)
                             .font(.title3.bold().monospaced())
-                            .foregroundStyle(nfc.pulsePhase == "ON" ? .green : .orange)
                     }
 
                     Spacer()
@@ -114,35 +185,12 @@ struct ContentView: View {
                         count: pulsePreset.count
                     )
                 } label: {
-                    HStack {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                        Text("START \(pulsePreset.rawValue) PATTERN")
-                            .fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
-
-                if nfc.isPulseMode {
-                    Button(role: .destructive) {
-                        nfc.stop()
-                    } label: {
-                        HStack {
-                            Image(systemName: "stop.fill")
-                            Text("STOP PATTERN")
-                                .fontWeight(.bold)
-                        }
+                    Text("START \(pulsePreset.rawValue) PATTERN")
+                        .fontWeight(.bold)
                         .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
                 }
-
-                Text("المفروض تسمع: طقطقة أثناء ON → سكون أثناء OFF → طقطقة → سكون. إذا اتبع المسجل الإيقاع نفسه، فلدينا قناة تحكم برمجية فعلية.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode || nfc.isToneMode)
             }
         }
     }
@@ -164,32 +212,15 @@ struct ContentView: View {
                 Button {
                     nfc.startBurst(seconds: 6)
                 } label: {
-                    HStack {
-                        Image(systemName: "bolt.horizontal.circle.fill")
-                        Text("NFC BURST — 6 SEC")
-                            .fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity)
+                    Text("NFC BURST — 6 SEC")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
-
-                Button {
-                    nfc.startContinuous()
-                } label: {
-                    HStack {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                        Text("START CONTINUOUS READER")
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode)
+                .disabled(!nfc.isAvailable || nfc.isScanning || nfc.isPulseMode || nfc.isToneMode)
 
                 Text(nfc.status)
                     .font(.caption)
-                    .foregroundStyle((nfc.isScanning || nfc.isPulseMode) ? .green : .secondary)
+                    .foregroundStyle((nfc.isScanning || nfc.isPulseMode || nfc.isToneMode) ? .green : .secondary)
 
                 Text("آخر حدث: \(nfc.lastEvent)")
                     .font(.caption2.monospaced())
@@ -214,21 +245,15 @@ struct ContentView: View {
                 Slider(value: $receiverMHz, in: 9.500...18.135, step: 0.005)
 
                 HStack {
-                    Button("− 5 kHz") {
-                        receiverMHz = max(9.500, receiverMHz - 0.005)
-                    }
+                    Button("− 5 kHz") { receiverMHz = max(9.500, receiverMHz - 0.005) }
                     Spacer()
-                    Button("13.560") {
-                        receiverMHz = 13.560
-                    }
+                    Button("13.560") { receiverMHz = 13.560 }
                     Spacer()
-                    Button("+ 5 kHz") {
-                        receiverMHz = min(18.135, receiverMHz + 0.005)
-                    }
+                    Button("+ 5 kHz") { receiverMHz = min(18.135, receiverMHz + 0.005) }
                 }
                 .buttonStyle(.bordered)
 
-                Text("خلّه على 13.560 MHz أولاً. إذا كان الالتقاط أقوى بجانبها، جرّب ±5 kHz.")
+                Text("ابدأ على 13.560 MHz، ونفس مكان الآيفون الذي أعطاك الطقطقة المستمرة.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -238,7 +263,7 @@ struct ContentView: View {
     private var audioCard: some View {
         card {
             VStack(alignment: .leading, spacing: 13) {
-                Label("اختبار صوتي ثانوي", systemImage: "waveform")
+                Label("صوت سماعة الآيفون للمقارنة", systemImage: "waveform")
                     .font(.headline)
 
                 Picker("Pattern", selection: $beacon.pattern) {
@@ -252,19 +277,12 @@ struct ContentView: View {
                 Button {
                     beacon.isRunning ? beacon.stop() : beacon.start()
                 } label: {
-                    HStack {
-                        Image(systemName: beacon.isRunning ? "stop.fill" : "play.fill")
-                        Text(beacon.isRunning ? "STOP AUDIO" : "START AUDIO BEACON")
-                            .fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity)
+                    Text(beacon.isRunning ? "STOP AUDIO" : "START AUDIO BEACON")
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(nfc.isScanning || nfc.isPulseMode)
-
-                Text("هذا الصوت ليس مُضمّنًا على NFC؛ للاختبار المقارن فقط.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .disabled(nfc.isScanning || nfc.isPulseMode || nfc.isToneMode)
             }
         }
     }
@@ -272,16 +290,16 @@ struct ContentView: View {
     private var procedureCard: some View {
         card {
             VStack(alignment: .leading, spacing: 10) {
-                Label("الاختبار الحاسم", systemImage: "checklist")
+                Label("وش نبي نسمع؟", systemImage: "ear")
                     .font(.headline)
 
-                Text("1. اضبط المسجل على SW2 / 13.560 MHz.")
-                Text("2. قرّب أعلى الآيفون للمسجل مثل التجربة التي نجحت معك.")
-                Text("3. ابدأ بنمط 2s / 2s.")
-                Text("4. المفروض تسمع طقطقة قرابة ثانيتين ثم سكون قرابة ثانيتين، وتتكرر.")
-                Text("5. إذا نجح، جرّب 1s / 1s ثم 0.5s / 0.5s.")
+                Text("1. SW2 = 13.560 MHz.")
+                Text("2. نفس موضع الجوال اللي نجحت فيه التجربة السابقة.")
+                Text("3. شغّل 50 Hz لمدة 8 ثوانٍ.")
+                Text("4. بعدها 100 Hz ثم 200 Hz.")
+                Text("5. النجاح = الأزيز/النغمة ترتفع بوضوح كلما رفعت Hz.")
 
-                Text("إذا 2/2 ينجح و0.5/0.5 يفشل، فالحد غالبًا من زمن فتح/إغلاق جلسة Core NFC في iOS، وليس من مستقبل SW نفسه.")
+                Text("إذا كلها تطلع نفس الطقطقة بدون اختلاف في Pitch، فـ Core NFC لا يعطينا سرعة/تحكم كافيين لتحويلها لصوت. إذا تغير الـPitch، ننتقل بعدها مباشرة لتجربة Melody ثم low-fi audio.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -291,7 +309,7 @@ struct ContentView: View {
     }
 
     private var disclaimer: some View {
-        Text("هذه النسخة تتحكم بتشغيل وإيقاف جلسات NFC، وليست تحكمًا خامًا بموجة 13.56 MHz. iOS قد يفرض تأخيرًا بين الجلسات، لذلك الزمن الفعلي قد يختلف قليلًا عن الرقم المختار.")
+        Text("هذا لا يرسل ملف صوت بعد. هو اختبار لمعرفة هل restartPolling داخل جلسة NFC واحدة يقدر يصنع ترددًا صوتيًا قابلًا للسماع على مستقبل SW. iOS ما يزال يتحكم بالموجة RF نفسها.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
