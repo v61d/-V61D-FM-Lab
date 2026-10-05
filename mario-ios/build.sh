@@ -14,20 +14,21 @@ PY
 curl -fL --retry 3 https://mario.v61d.chatgpt.site/mario.nes -o build/game/mario.nes
 echo 'f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de  build/game/mario.nes' | shasum -a 256 -c -
 INCLUDES="$PWD/build/core/src/drivers/libretro/libretro-common/include"
-make -C build/core -f Makefile.libretro -j4 platform=unix STATIC_LINKING=1 TARGET=host.a HAVE_HDPACK=0 HAVE_NTSC=0
+make -C build/core -f Makefile.libretro -j4 platform=unix STATIC_LINKING=1 TARGET=host.a HAVE_HDPACK=0 HAVE_NTSC=1
 clang -O2 -I "$INCLUDES" core-smoke.c build/core/host.a -lm -o build/core-smoke
 ./build/core-smoke build/game/mario.nes
-make -C build/core -f Makefile.libretro platform=unix STATIC_LINKING=1 TARGET=host.a HAVE_HDPACK=0 HAVE_NTSC=0 clean
+make -C build/core -f Makefile.libretro platform=unix STATIC_LINKING=1 TARGET=host.a HAVE_HDPACK=0 HAVE_NTSC=1 clean
 SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-make -C build/core -f Makefile.libretro -j4 platform=unix STATIC_LINKING=1 TARGET=fceumm-ios.a HAVE_HDPACK=0 HAVE_NTSC=0 CC="xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot $SDK_PATH -DIOS" AR="xcrun ar"
+make -C build/core -f Makefile.libretro -j4 platform=unix STATIC_LINKING=1 TARGET=fceumm-ios.a HAVE_HDPACK=0 HAVE_NTSC=1 CC="xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot $SDK_PATH -DIOS" AR="xcrun ar"
 APP_PATH="$PWD/build/Payload/V61D Mario.app"
 mkdir -p "$APP_PATH"
 xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK_PATH" \
   -fobjc-arc -fmodules -O2 -Wall -Wextra -Wno-unused-parameter -I "$INCLUDES" \
-  -framework UIKit -framework QuartzCore -framework GameController -framework AudioToolbox -framework AVFoundation \
-  -Wl,-no_adhoc_codesign NativeMain.m NativeEngine.m build/core/fceumm-ios.a -lm -o "$APP_PATH/V61DMario"
+  -framework UIKit -framework QuartzCore -framework GameController -framework AudioToolbox -framework AVFoundation -framework ReplayKit -framework UniformTypeIdentifiers \
+  -Wl,-no_adhoc_codesign NativeMain.m NativeEngine.m MenuController.m SaveStore.m build/core/fceumm-ios.a -lm -o "$APP_PATH/V61DMario"
 cp Info.plist "$APP_PATH/Info.plist"
 cp build/game/mario.nes "$APP_PATH/mario.nes"
+cp v61d-logo.png "$APP_PATH/v61d-logo.png"
 cp build/core/Copying "$APP_PATH/COPYING"
 xcrun ibtool --compile "$APP_PATH/LaunchScreen.storyboardc" LaunchScreen.storyboard \
   --minimum-deployment-target 15.0 --target-device iphone --target-device ipad
@@ -39,7 +40,7 @@ plutil -lint "$APP_PATH/Info.plist"
 file "$APP_PATH/V61DMario"
 # Corresponding GPL source: exact patched core plus frontend; game ROM is separate.
 mkdir -p build/V61D-Mario-Native-source/frontend
-cp NativeMain.m NativeEngine.m NativeEngine.h core-smoke.c build.sh Info.plist README.md LaunchScreen.storyboard AppIcon.png build/V61D-Mario-Native-source/frontend/
+cp NativeMain.m NativeEngine.m NativeEngine.h NativePanels.inc MenuController.h MenuController.m SaveStore.h SaveStore.m core-smoke.c build.sh verify-simulator.sh Info.plist README.md LaunchScreen.storyboard AppIcon.png v61d-logo.png build/V61D-Mario-Native-source/frontend/
 cp -R build/core build/V61D-Mario-Native-source/core
 find build/V61D-Mario-Native-source/core -type f \( -name '*.o' -o -name '*.a' \) -delete
 cd build

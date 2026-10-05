@@ -13,7 +13,9 @@ static NativeEngine *engine;
 static NSMutableDictionary<NSString *,NSString *> *variables;
 static NSString *saveDirectory;
 static enum retro_pixel_format pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
-static uint16_t heldButtons;
+static uint16_t heldButtons, inputSources[3];
+static BOOL variablesChanged;
+static NSMutableArray<NSDictionary *> *optionSpecs;
 static unsigned runReleaseFrames;
 
 @interface NativeEngine () {
@@ -22,10 +24,30 @@ static unsigned runReleaseFrames;
     BOOL _loaded;
     double _lastTime, _accumulator, _frameRate;
     NSData *_rom;
+    UIImage *_lastFrame;
+    NSMutableArray<NSData *> *_rewindStates;
+    unsigned _rewindCounter, _renderedCount, _emulatedCount;
+    double _metricsStart, _renderedFPS, _emulatedFPS, _frameMilliseconds;
+    double _sampleRate;
 }
 - (void)tick:(CADisplayLink *)link;
+- (void)configureAudio:(double)rate;
+- (void)receiveFrame:(CGImageRef)frame;
+- (void)updateAV:(const struct retro_system_av_info *)info;
 @end
 
+static NSString *S(const char *s) { return s ? [NSString stringWithUTF8String:s] : @""; }
+static void addOption(const char *key, const char *label, const char *info, const char *category, const struct retro_core_option_value *values, const char *initial) {
+    NSMutableArray *choices=[NSMutableArray new];
+    for(unsigned i=0;i<RETRO_NUM_CORE_OPTION_VALUES_MAX && values[i].value;i++)
+        [choices addObject:@{@"value":S(values[i].value),@"label":values[i].label?S(values[i].label):S(values[i].value)}];
+    NSString *k=S(key), *d=S(initial); if(!d.length)d=choices.firstObject[@"value"]?:@"";
+    if([k hasPrefix:@"fceumm_overscan_"])d=@"0";
+    NSDictionary *saved=[NSUserDefaults.standardUserDefaults dictionaryForKey:@"core.options"];
+    NSString *value=saved[k];if(![[choices valueForKey:@"value"] containsObject:value])value=d;
+    variables[k]=value;
+    [optionSpecs addObject:@{@"key":k,@"label":S(label),@"info":S(info),@"category":S(category),@"values":choices,@"default":d}];
+}
 static bool environment(unsigned command, void *data) {
     switch (command) {
         case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool *)data = true; return true;
@@ -37,7 +59,17 @@ static bool environment(unsigned command, void *data) {
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
             *(const char **)data = saveDirectory.UTF8String; return true;
-        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: *(unsigned *)data = 0; return true;
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: *(unsigned *)data = 2; return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL:
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
+            const struct retro_core_options_v2 *options=command==RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2?data:((struct retro_core_options_v2_intl *)data)->us;
+            [optionSpecs removeAllObjects];
+            for(const struct retro_core_option_v2_definition *d=options->definitions;d&&d->key;d++)addOption(d->key,d->desc,d->info,d->category_key,d->values,d->default_value);
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: return true;
+        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: [engine updateAV:data];return true;
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
             const struct retro_variable *v = data;
             for (; v && v->key; v++) {
@@ -52,7 +84,7 @@ static bool environment(unsigned command, void *data) {
             struct retro_variable *v = data;
             v->value = [variables[@(v->key)] UTF8String]; return v->value != NULL;
         }
-        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = false; return true;
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool *)data = variablesChanged; variablesChanged=NO; return true;
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
@@ -74,6 +106,7 @@ static int16_t inputState(unsigned port, unsigned device, unsigned index, unsign
     return id < 16 && (value & (1u << id)) ? 1 : 0;
 }
 static size_t audioBatch(const int16_t *samples, size_t frames) {
+    if(engine.rewinding || fabs(engine.speed-1)>0.01)return frames;
     unsigned write = atomic_load_explicit(&audioWrite, memory_order_relaxed);
     unsigned read = atomic_load_explicit(&audioRead, memory_order_acquire);
     unsigned count = (unsigned)MIN(frames * 2, (RING_SAMPLES - 1) - (write - read));
@@ -121,20 +154,40 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)rgba);
     CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
     CGImageRef image = CGImageCreate(width,height,8,32,width * 4,color,kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,provider,NULL,false,kCGRenderingIntentDefault);
-    if (engine.videoFrame) engine.videoFrame(image);
+    [engine receiveFrame:image];
     CGImageRelease(image); CGColorSpaceRelease(color); CGDataProviderRelease(provider);
 }
 
 @implementation NativeEngine
 - (instancetype)init {
-    if ((self = [super init])) { _paused = YES; _autoRun = YES; _volume = 0.5; atomic_store(&audioVolume,0.5); }
+    if ((self = [super init])) { _paused = YES; _autoRun = YES; _volume = 0.5; _speed=1; _rewindStates=[NSMutableArray new]; atomic_store(&audioVolume,0.5); }
     return self;
 }
 - (double)frameRate { return _frameRate; }
+- (double)renderedFPS{return _renderedFPS;}
+- (double)emulatedFPS{return _emulatedFPS;}
+- (double)frameMilliseconds{return _frameMilliseconds;}
+- (UIImage *)lastFrame{return _lastFrame;}
+- (NSArray *)coreOptions{return [optionSpecs copy];}
+- (NSString *)coreValue:(NSString *)key{return variables[key];}
+- (void)setCoreValue:(NSString *)value key:(NSString *)key{
+    NSDictionary *spec=nil;for(NSDictionary *d in optionSpecs)if([d[@"key"] isEqual:key])spec=d;
+    if(![[spec[@"values"] valueForKey:@"value"] containsObject:value])return;
+    variables[key]=value;variablesChanged=YES;
+    [NSUserDefaults.standardUserDefaults setObject:[variables copy] forKey:@"core.options"];
+}
+- (void)resetCoreOptions{for(NSDictionary *d in optionSpecs)variables[d[@"key"]]=d[@"default"];variablesChanged=YES;[NSUserDefaults.standardUserDefaults removeObjectForKey:@"core.options"];}
+- (void)receiveFrame:(CGImageRef)frame{_lastFrame=[UIImage imageWithCGImage:frame];}
+- (void)updateAV:(const struct retro_system_av_info *)info{_frameRate=info->timing.fps;if(_audioQueue&&fabs(_sampleRate-info->timing.sample_rate)>1)[self configureAudio:info->timing.sample_rate];}
+- (void)setPerformanceMode:(NSInteger)value{_performanceMode=value;_displayLink.preferredFramesPerSecond=value==2?30:(value==1?UIScreen.mainScreen.maximumFramesPerSecond:60);}
+- (void)setRewindEnabled:(BOOL)value{_rewindEnabled=value;[_rewindStates removeAllObjects];_rewinding=NO;}
+- (void)releaseInputs{heldButtons=0;memset(inputSources,0,sizeof(inputSources));runReleaseFrames=0;}
+- (void)setCheats:(NSArray *)cheats{retro_cheat_reset();unsigned index=0;for(NSDictionary *c in cheats)retro_cheat_set(index++,[c[@"enabled"] boolValue],[c[@"code"] UTF8String]);}
+
 - (void)setVolume:(float)value { _volume = MAX(0,MIN(1,value)); atomic_store(&audioVolume,_volume); }
 - (BOOL)loadROM:(NSString *)path error:(NSError **)error {
-    engine = self; heldButtons = 0; runReleaseFrames = 0;
-    variables = [NSMutableDictionary new];
+    engine = self; [self releaseInputs];
+    variables = [NSMutableDictionary new]; optionSpecs=[NSMutableArray new]; variablesChanged=NO;
     saveDirectory = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     _rom = [NSData dataWithContentsOfFile:path];
     if (!_rom.length) { if (error) *error = [NSError errorWithDomain:@"V61DMario" code:1 userInfo:@{NSLocalizedDescriptionKey:@"ملف اللعبة غير متاح"}]; return NO; }
@@ -148,12 +201,29 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
     struct retro_system_av_info info; retro_get_system_av_info(&info);
     _frameRate = info.timing.fps > 0 ? info.timing.fps : 60.0988;
+    [self configureAudio:info.timing.sample_rate];
+    _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
+    _displayLink.preferredFramesPerSecond = _performanceMode==2?30:(_performanceMode==1?UIScreen.mainScreen.maximumFramesPerSecond:60);
+    _displayLink.paused = YES;
+    [_displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    return YES;
+}
+- (void)setPaused:(BOOL)paused {
+    _paused = paused; _displayLink.paused = paused; _lastTime = 0; _accumulator = 0;
+    if (paused) {
+        [self releaseInputs]; _metricsStart=0;_renderedCount=_emulatedCount=0;
+        if (_audioQueue) AudioQueuePause(_audioQueue);
+    } else if (_audioQueue) AudioQueueStart(_audioQueue,NULL);
+}
+- (void)configureAudio:(double)rate{
+    if(_audioQueue){AudioQueueStop(_audioQueue,true);AudioQueueDispose(_audioQueue,true);_audioQueue=NULL;}
+    atomic_store(&audioRead,0);atomic_store(&audioWrite,0);_sampleRate=rate;
     AVAudioSession *session = AVAudioSession.sharedInstance;
     [session setCategory:AVAudioSessionCategoryPlayback error:nil];
     [session setPreferredIOBufferDuration:0.01 error:nil];
     [session setActive:YES error:nil];
     AudioStreamBasicDescription format = {0};
-    format.mSampleRate = info.timing.sample_rate;
+    format.mSampleRate = rate;
     format.mFormatID = kAudioFormatLinearPCM;
     format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
     format.mBytesPerPacket = format.mBytesPerFrame = 4;
@@ -162,34 +232,33 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     if (status == noErr) {
         for (int i=0;i<3;i++) { AudioQueueBufferRef buffer; if (AudioQueueAllocateBuffer(_audioQueue,2048,&buffer)==noErr) queueOutput(NULL,_audioQueue,buffer); }
     }
-    _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
-    _displayLink.preferredFramesPerSecond = 60;
-    _displayLink.paused = YES;
-    [_displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-    return YES;
-}
-- (void)setPaused:(BOOL)paused {
-    _paused = paused; _displayLink.paused = paused; _lastTime = 0; _accumulator = 0;
-    if (paused) {
-        heldButtons = 0;
-        if (_audioQueue) AudioQueuePause(_audioQueue);
-    } else if (_audioQueue) AudioQueueStart(_audioQueue,NULL);
+    if(!_paused&&_audioQueue)AudioQueueStart(_audioQueue,NULL);
 }
 - (void)tick:(CADisplayLink *)link {
     if (!_loaded || _paused) return;
-    if (!_lastTime) _lastTime = link.timestamp;
-    _accumulator += MIN(link.timestamp - _lastTime, 3.0 / _frameRate);
-    _lastTime = link.timestamp;
-    for (unsigned frames = 0; _accumulator >= 1.0 / _frameRate && frames < 3; frames++) {
-        _accumulator -= 1.0 / _frameRate;
-        retro_run();
-        if (runReleaseFrames) runReleaseFrames--;
+    if (!_lastTime) _lastTime=link.timestamp;
+    if(!_metricsStart)_metricsStart=link.timestamp;
+    _accumulator+=MIN(link.timestamp-_lastTime,0.1)*MAX(0.1,MIN(10,_speed));_lastTime=link.timestamp;
+    unsigned frames=0;double begin=CACurrentMediaTime();
+    if(_rewinding&&_rewindEnabled&&_rewindStates.count){
+        NSData *state=_rewindStates.lastObject;[_rewindStates removeLastObject];retro_unserialize(state.bytes,state.length);retro_run();frames=1;_accumulator=0;
+    }else if(!_rewinding){
+        while(_accumulator>=1.0/_frameRate&&frames<60){
+            _accumulator-=1.0/_frameRate;retro_run();frames++;if(runReleaseFrames)runReleaseFrames--;
+            if(_rewindEnabled&&++_rewindCounter>=6){_rewindCounter=0;NSData *state=[self saveState];if(state)[_rewindStates addObject:state];if(_rewindStates.count>150)[_rewindStates removeObjectAtIndex:0];}
+        }
     }
+    if(frames){_emulatedCount+=frames;_renderedCount++;_frameMilliseconds=(CACurrentMediaTime()-begin)*1000/frames;if(self.videoFrame&&_lastFrame)self.videoFrame(_lastFrame.CGImage);}
+    double elapsed=link.timestamp-_metricsStart;
+    if(elapsed>=1){_renderedFPS=_renderedCount/elapsed;_emulatedFPS=_emulatedCount/elapsed;_renderedCount=_emulatedCount=0;_metricsStart=link.timestamp;}
 }
-- (void)setButton:(unsigned)button pressed:(BOOL)pressed {
-    if (_paused || button >= 16) return;
-    if (pressed) heldButtons |= 1u << button; else heldButtons &= ~(1u << button);
-    if (_autoRun && button == RETRO_DEVICE_ID_JOYPAD_B && pressed) runReleaseFrames = 2;
+- (void)setButton:(unsigned)button pressed:(BOOL)pressed{[self setButton:button pressed:pressed source:0];}
+- (void)setButton:(unsigned)button pressed:(BOOL)pressed source:(unsigned)source{
+    if(_paused||button>=16||source>=3)return;
+    BOOL prior=(heldButtons&(1u<<button))!=0;
+    if(pressed)inputSources[source]|=1u<<button;else inputSources[source]&=~(1u<<button);
+    heldButtons=inputSources[0]|inputSources[1]|inputSources[2];
+    if(_autoRun&&button==RETRO_DEVICE_ID_JOYPAD_B&&!prior&&(heldButtons&(1u<<button)))runReleaseFrames=2;
 }
 - (NSData *)saveState {
     if (!_loaded) return nil;
@@ -199,8 +268,8 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
 - (BOOL)restoreState:(NSData *)data {
     if (!_loaded || data.length != retro_serialize_size()) return NO;
     BOOL success = retro_unserialize(data.bytes,data.length);
-    if (success) { heldButtons = 0; runReleaseFrames = 0; _accumulator = 0; _lastTime = 0; }
+    if (success) { [self releaseInputs]; [_rewindStates removeAllObjects]; _accumulator = 0; _lastTime = 0; }
     return success;
 }
-- (void)reset { if (_loaded) retro_reset(); heldButtons = 0; runReleaseFrames = 0; }
+- (void)reset { if (_loaded) retro_reset(); [self releaseInputs]; [_rewindStates removeAllObjects]; }
 @end

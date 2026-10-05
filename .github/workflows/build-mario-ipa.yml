@@ -14,11 +14,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and verify unsigned IPA
         run: bash mario-ios/build.sh
+      - name: Verify native UI and save management in iOS simulator
+        run: bash mario-ios/verify-simulator.sh
       - uses: actions/upload-artifact@v4
         with:
           name: V61D-Mario-Native
           path: |
             mario-ios/build/V61D-Mario-Native-unsigned.ipa
             mario-ios/build/V61D-Mario-Native-source.zip
+            mario-ios/build/QA-*
           if-no-files-found: error
           retention-days: 30
