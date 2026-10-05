@@ -9,14 +9,16 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build and verify unsigned IPA
         run: bash mario-ios/build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: V61D-Mario-unsigned
-          path: mario-ios/build/V61D-Mario-unsigned.ipa
+          name: V61D-Mario-Native
+          path: |
+            mario-ios/build/V61D-Mario-Native-unsigned.ipa
+            mario-ios/build/V61D-Mario-Native-source.zip
           if-no-files-found: error
           retention-days: 30
