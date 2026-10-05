@@ -48,12 +48,12 @@ jobs:
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          ditto -c -k --sequesterRsrc --keepParent Payload V61D-SW-NFC-Pulse-Lab-unsigned.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload V61D-SW-NFC-Tone-Lab-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: V61D-SW-NFC-Pulse-Lab-unsigned
-          path: V61D-SW-NFC-Pulse-Lab-unsigned.ipa
+          name: V61D-SW-NFC-Tone-Lab-unsigned
+          path: V61D-SW-NFC-Tone-Lab-unsigned.ipa
           if-no-files-found: error
           retention-days: 30

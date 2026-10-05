@@ -1,39 +1,35 @@
 # V61D SW / NFC Lab
 
-Experimental iOS lab for testing whether a nearby shortwave receiver can notice iPhone NFC reader activity at **13.56 MHz**.
+## v0.4 — RF Tone experiment
 
-## v0.3 — Pulse Channel
+The car SW receiver already produces a repeatable NFC-related click pattern at **13.560 MHz**. v0.4 tests whether those RF transients can be pushed into an audible pitch.
 
-The app now includes an automatic **NFC ON/OFF pulse train**. This is intended to test whether the click/buzz already heard on the SW receiver can be controlled by software timing.
+Instead of opening and closing whole NFC sessions, the app keeps one Core NFC reader session active and repeatedly calls `restartPolling()` at a selected rate:
 
-Presets:
-- **2s ON / 2s OFF** × 6
-- **1s ON / 1s OFF** × 8
-- **0.5s ON / 0.5s OFF** × 10
+- 25 Hz
+- 50 Hz
+- 100 Hz
+- 200 Hz
 
-The app starts an NFC reader session for each ON interval, invalidates it for OFF, then starts the next session.
+If each polling restart produces a detectable transient in the receiver, a sufficiently fast train may be heard as a buzz/tone rather than isolated clicks.
 
-## Test
+### Test
 
-1. Tune the receiver to **SW2 / 13.560 MHz**.
-2. Put the upper part of the iPhone very close to the same location that produced the continuous clicking.
-3. Start with **2s / 2s**.
-4. Listen for approximately two seconds of NFC-related clicking followed by approximately two seconds of silence.
-5. If that tracks reliably, try the faster presets.
+1. Tune SW2 to **13.560 MHz**.
+2. Place the upper iPhone area at the same point that produced the previous continuous clicking.
+3. Start at **50 Hz**.
+4. Then try **100 Hz** and **200 Hz**.
+5. Listen specifically for pitch change.
 
-A repeatable timing-correlated result is evidence of a software-controlled RF activity channel.
+If the pitch follows the selected rate, the next experiment can sequence rates into a melody and then investigate low-rate audio encoding.
 
-## Important limitation
+### Important limitation
 
-This does **not** directly modulate arbitrary audio onto 13.56 MHz. iOS controls the NFC RF waveform, power, polling behavior and timing internally. The app only starts and stops public Core NFC reader sessions, so actual timing can include system startup/invalidation delay.
+Core NFC exposes reader sessions and polling controls, not raw 13.56 MHz carrier amplitude/phase modulation. This test therefore cannot guarantee arbitrary audio transmission.
 
-## Signing
+### Artifact
 
-The final signed app must retain Apple's **Near Field Communication Tag Reading** entitlement.
-
-## Build artifact
-
-`V61D-SW-NFC-Pulse-Lab-unsigned`
+`V61D-SW-NFC-Tone-Lab-unsigned`
 
 ## License
 
