@@ -19,8 +19,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.v61d.V61DFMLab
         PRODUCT_NAME: V61D SW NFC Lab
-        CURRENT_PROJECT_VERSION: 2
-        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 3
+        MARKETING_VERSION: 0.3.0
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: V61D SW NFC Lab
         INFOPLIST_KEY_NFCReaderUsageDescription: "V61D SW/NFC Lab uses NFC reader mode to test 13.56 MHz activity with a nearby shortwave receiver."
