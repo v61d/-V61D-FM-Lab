@@ -162,6 +162,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     if ((self = [super init])) { _paused = YES; _autoRun = YES; _volume = 0.5; _speed=1; _rewindStates=[NSMutableArray new]; atomic_store(&audioVolume,0.5); }
     return self;
 }
+- (NSUInteger)rewindStateCount{return _rewindStates.count;}
 - (double)frameRate { return _frameRate; }
 - (double)aspectRatio{return _aspectRatio>0?_aspectRatio:256.0/240.0;}
 - (double)renderedFPS{return _renderedFPS;}
@@ -242,7 +243,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     _accumulator+=MIN(link.timestamp-_lastTime,0.1)*MAX(0.1,MIN(10,_speed));_lastTime=link.timestamp;
     unsigned frames=0;double begin=CACurrentMediaTime();
     if(_rewinding&&_rewindEnabled&&_rewindStates.count){
-        NSData *state=_rewindStates.lastObject;[_rewindStates removeLastObject];retro_unserialize(state.bytes,state.length);retro_run();frames=1;_accumulator=0;
+        [self rewindStep];frames=1;_accumulator=0;
     }else if(!_rewinding){
         while(_accumulator>=1.0/_frameRate&&frames<60){
             _accumulator-=1.0/_frameRate;retro_run();frames++;NativeInputFrame(&inputs);
@@ -269,6 +270,7 @@ static void video(const void *pixels, unsigned width, unsigned height, size_t pi
     if (success) { [self releaseInputs]; [_rewindStates removeAllObjects]; _accumulator = 0; _lastTime = 0; }
     return success;
 }
+- (BOOL)rewindStep{if(!_loaded||!_rewindEnabled||!_rewindStates.count)return NO;NSData *state=_rewindStates.lastObject;[_rewindStates removeLastObject];if(!retro_unserialize(state.bytes,state.length))return NO;retro_run();return YES;}
 - (void)advanceFrame{if(!_loaded||!_paused)return;retro_run();NativeInputFrame(&inputs);if(self.videoFrame&&_lastFrame)self.videoFrame(_lastFrame.CGImage);}
 - (void)reset {
     if(_loaded){retro_unload_game();struct retro_game_info game={_romPath.UTF8String,_rom.bytes,_rom.length,NULL};_loaded=retro_load_game(&game);retro_set_controller_port_device(0,RETRO_DEVICE_JOYPAD);struct retro_system_av_info info;retro_get_system_av_info(&info);[self updateAV:&info];}

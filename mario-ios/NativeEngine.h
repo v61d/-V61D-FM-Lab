@@ -21,4 +21,6 @@
 - (void)setCheats:(NSArray<NSDictionary *> *)cheats;
 - (void)reset;
 - (void)advanceFrame;
+@property(nonatomic,readonly)NSUInteger rewindStateCount;
+- (BOOL)rewindStep;
 @end
